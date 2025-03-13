@@ -64,44 +64,52 @@ write_files:
       BASE_DIR="/root/deployr/${apps_directory}"
       # Log in to Infisical
       echo "Logging in to Infisical..."
-      export INFISICAL_TOKEN=$(infisical login --method=universal-auth --client-id="$CLIENT_ID" --client-secret="$CLIENT_SECRET" --silent --plain)
+      sync_secrets() {
+          export INFISICAL_TOKEN=$(infisical login --method=universal-auth --client-id="$CLIENT_ID" --client-secret="$CLIENT_SECRET" --silent --plain)
 
-      cd "$BASE_DIR"
-      # Get the secrets of the root directory
-      infisical export --env=prod --projectId="$PROJECT_ID" > ".secrets"
+          cd "$BASE_DIR"
+          # Get the secrets of the root directory
+          infisical export --env=prod --projectId="$PROJECT_ID" > ".secrets"
 
-      # Iterate through each subdirectory  
-      for dir in */; do
-          # Check if it's a directory
-          if [ -d "$dir" ]; then
-              echo "Processing directory: $dir"
+          # Iterate through each subdirectory  
+          for dir in */; do
+              # Check if it's a directory
+              if [ -d "$dir" ]; then
+                  echo "Processing directory: $dir"
 
-              # Export environment variables
-              echo "Exporting environment variables for project ID: $PROJECT_ID in directory: $dir"
-              infisical export --env=prod --path="/$dir" --projectId="$PROJECT_ID" > "$dir/.secrets"
+                  # Export environment variables
+                  echo "Exporting environment variables for project ID: $PROJECT_ID in directory: $dir"
+                  infisical export --env=prod --path="/$dir" --projectId="$PROJECT_ID" > "$dir/.secrets"
 
-              if [ $? -eq 0 ]; then
-                  echo "Export successful for directory: $dir"
+                  if [ $? -eq 0 ]; then
+                      echo "Export successful for directory: $dir"
+                  else
+                      echo "Error: Export failed for directory: $dir"
+                  fi
               else
-                  echo "Error: Export failed for directory: $dir"
+                  echo "Skipping non-directory: $dir"
               fi
+          done
+      }
+
+      update_and_deploy() {
+          # Fetch the latest changes
+          git fetch
+
+          # Check for new commits and pull if there are any
+          if [ $(git rev-list HEAD...origin/main --count) -gt 0 ]; then
+            echo "New commits found. Pulling changes..."
+            git pull origin main
+            docker-compose -f /root/deployr/${apps_directory}/docker-compose.yaml up -d
           else
-              echo "Skipping non-directory: $dir"
+            echo "No new commits found."
           fi
-      done
+          echo "Script execution completed."
+      }
 
-      # Fetch the latest changes
-      git fetch
-
-      # Check for new commits and pull if there are any
-      if [ $(git rev-list HEAD...origin/main --count) -gt 0 ]; then
-        echo "New commits found. Pulling changes..."
-        git pull origin main
-        docker-compose -f /root/deployr/${apps_directory}/docker-compose.yaml up -d
-      else
-        echo "No new commits found."
-      fi
-      echo "Script execution completed."
+      # Call the functions
+      sync_secrets
+      update_and_deploy
     permissions: '0755'
     owner: root:root
 
